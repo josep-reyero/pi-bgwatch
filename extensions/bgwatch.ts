@@ -35,6 +35,9 @@ interface Watch {
   dropped: number;
   timer?: NodeJS.Timeout;
   lines: number;
+  // Last line that reached a wake, and how many identical lines followed it.
+  lastWakeLine?: string;
+  repeats: number;
   done: boolean;
   exitCode?: number | null;
   startedAt: number;
@@ -51,8 +54,11 @@ export default function (pi: ExtensionAPI) {
     }
     const lines = w.pending;
     const dropped = w.dropped;
+    const repeats = w.repeats;
     w.pending = [];
     w.dropped = 0;
+    w.repeats = 0;
+    if (lines.length > 0) w.lastWakeLine = lines[lines.length - 1];
     if (kind === "output" && lines.length === 0) return;
 
     let content = `bgwatch ${w.id} (${w.title})`;
@@ -66,6 +72,7 @@ export default function (pi: ExtensionAPI) {
       content += `\n${lines.join("\n")}`;
       if (dropped > 0) content += `\n... ${dropped} more line(s) in ${w.logFile}`;
     }
+    if (repeats > 0) content += `\n(${repeats} repeat(s) of the previous line suppressed)`;
     content += `\nLog: ${w.logFile}`;
 
     pi.sendMessage(
@@ -88,6 +95,12 @@ export default function (pi: ExtensionAPI) {
     w.lines++;
     w.log.write((stderr ? "[stderr] " : "") + line + "\n");
     if (w.pattern && !w.pattern.test(line)) return;
+    // A line identical to the last one that woke the agent is noise (a
+    // watcher retrying the same error); count it instead of waking again.
+    if (line === w.lastWakeLine) {
+      w.repeats++;
+      return;
+    }
     if (w.pending.length >= MAX_LINES_PER_WAKE) {
       w.dropped++;
     } else {
@@ -109,17 +122,24 @@ export default function (pi: ExtensionAPI) {
     });
   };
 
+  // Signal the watch's whole process group (negative pid), falling back to
+  // the child alone when the group is already gone.
+  const signalTree = (w: Watch, sig: NodeJS.Signals) => {
+    if (!w.child.pid) return;
+    try {
+      process.kill(-w.child.pid, sig);
+    } catch {
+      try {
+        w.child.kill(sig);
+      } catch {}
+    }
+  };
+
   const stop = (w: Watch) => {
     if (w.done) return;
-    try {
-      w.child.kill("SIGTERM");
-    } catch {}
+    signalTree(w, "SIGTERM");
     setTimeout(() => {
-      if (!w.done) {
-        try {
-          w.child.kill("SIGKILL");
-        } catch {}
-      }
+      if (!w.done) signalTree(w, "SIGKILL");
     }, 2000).unref();
   };
 
@@ -160,8 +180,11 @@ export default function (pi: ExtensionAPI) {
         stdio: ["ignore", "pipe", "pipe"],
         cwd: params.cwd ?? ctx.cwd,
         env: process.env,
-        detached: false,
+        // Own process group, so stopping the watch kills the whole tree
+        // (bash -lc and everything it started), not only the shell.
+        detached: true,
       });
+      child.unref();
       writeFileSync(join(dir, "pid"), String(child.pid ?? "") + "\n");
 
       const w: Watch = {
@@ -176,6 +199,7 @@ export default function (pi: ExtensionAPI) {
         debounceMs: params.debounce_ms ?? 3000,
         pending: [],
         dropped: 0,
+        repeats: 0,
         lines: 0,
         done: false,
         startedAt: Date.now(),
@@ -240,11 +264,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     for (const w of watches.values()) {
-      if (!w.done) {
-        try {
-          w.child.kill("SIGKILL");
-        } catch {}
-      }
+      if (!w.done) signalTree(w, "SIGKILL");
       if (w.timer) clearTimeout(w.timer);
     }
     watches.clear();

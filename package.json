@@ -1,15 +1,34 @@
 {
   "name": "pi-bgwatch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pi extension: run commands in the background and get woken by their output, like Claude Code's Monitor tool. Debounced wakes, regex line filter, exit wake, per-session directories.",
   "type": "module",
-  "keywords": ["pi-package", "pi", "pi-coding-agent", "background", "monitor", "watch", "wake"],
-  "repository": { "type": "git", "url": "git+https://github.com/josep-reyero/pi-bgwatch.git" },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "background",
+    "monitor",
+    "watch",
+    "wake"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/josep-reyero/pi-bgwatch.git"
+  },
   "homepage": "https://github.com/josep-reyero/pi-bgwatch#readme",
-  "bugs": { "url": "https://github.com/josep-reyero/pi-bgwatch/issues" },
-  "files": ["extensions/", "README.md", "LICENSE"],
+  "bugs": {
+    "url": "https://github.com/josep-reyero/pi-bgwatch/issues"
+  },
+  "files": [
+    "extensions/",
+    "README.md",
+    "LICENSE"
+  ],
   "pi": {
-    "extensions": ["./extensions/bgwatch.ts"]
+    "extensions": [
+      "./extensions/bgwatch.ts"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

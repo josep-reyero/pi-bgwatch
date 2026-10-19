@@ -57,6 +57,9 @@ on output, filters and batches it, and isolates sessions by pid.
 - Messages are sent with `pi.sendMessage(..., { triggerTurn: true, deliverAs: "followUp" })`:
   if the agent is mid-turn the wake queues behind it instead of interrupting.
 - At most 200 lines per wake; the rest is counted and pointed at the log.
+- A line identical to the last one that woke the agent is suppressed and counted
+  (a watcher retrying the same error does not flood the session).
+- Each watch runs in its own process group; `bgwatch_stop` kills the whole tree.
 - Children are killed on `session_shutdown`.
 - Works in interactive, RPC and print modes: nothing here needs a terminal UI.
 
